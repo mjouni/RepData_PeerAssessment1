@@ -1,0 +1,114 @@
+Analysing Data from a Personal Activity Monitor Device 
+=======================================================
+
+We will first being by uncompressing and loading the data from `activity.zip` which is included with this document:
+
+```{r message=FALSE}
+library(dplyr)
+library(lubridate)
+unzip("activity.zip")
+activity <- read.csv("activity.csv")
+activity$date <- ymd(activity$date)
+```
+
+A quick summary of the data will yield the following:
+
+```{r}
+summary(activity)
+```
+
+```{r echo=FALSE}
+num_nas <- sum(is.na(activity$steps))
+```
+
+Since we have found a large number of observations with missing step values (`r num_nas` with NAs), we will filter those out :
+
+```{r}
+activity_complete <- filter(activity, !is.na(steps))
+```
+
+
+##What is mean total number of steps taken per day?
+
+To answer this question, we will first plot the histogram of the total number of steps taken each day:
+
+```{r message=FALSE}
+library(lattice)
+day_grouped <- group_by(activity_complete, date)
+total_steps_day <- summarise(day_grouped, total_per_day = sum(steps))
+histogram(~total_steps_day$total_per_day, xlab="Steps per day")
+mean(total_steps_day$total_per_day)
+median(total_steps_day$total_per_day) 
+```
+
+
+##What is the average daily activity pattern?
+
+We first begin by charting the average steps taken by this person for every interval in the day, for all the days sampled: 
+
+```{r}
+interval_grouped <- group_by(activity_complete, interval)
+avg_steps_day <- summarise(interval_grouped, avg_day = sum(steps)/n())
+xyplot(avg_day ~ interval, data=avg_steps_day, type="l", xlab="Time interval", ylab="Average Steps")
+```
+
+To see when this person is mostly active, we can look at the time interval where this person usually logs the most number of steps during the day:
+
+``` {r}
+filter(avg_steps_day, avg_day == max(avg_day))
+```
+
+
+## Imputing missing values
+
+As mentioned in the initial section, the total number of NAs found in the raw dataset was `r num_nas`. 
+
+To complete all the observations, We will replace missing values with the average of the time interval:
+
+``` {r}
+activity_estimated_nas <- activity
+for (i in 1:nrow(activity_estimated_nas))
+{
+  row <- activity_estimated_nas[i, ]
+  if (is.na(row["steps"]))
+      {
+        matching_interval <- filter(avg_steps_day, interval == row[["interval"]])
+        row["steps"] <- matching_interval$avg_day
+        activity_estimated_nas[i, ] <- row
+      }
+}
+```
+
+
+```{r}
+sum(is.na(activity_estimated_nas$steps))
+```
+
+After filling the NAs, if we re-run the analysis to get the mean and average of the total steps taken we get:
+
+```{r message=FALSE}
+day_grouped_adj <- group_by(activity_estimated_nas, date)
+total_steps_day_adj <- summarise(day_grouped_adj, total_per_day = sum(steps))
+histogram(~total_steps_day_adj$total_per_day, xlab="Steps per day")
+mean(total_steps_day_adj$total_per_day)
+median(total_steps_day_adj$total_per_day) 
+```
+
+The difference between the dataset wihtout the NA values and the dataset with the imputted values:
+
+```{r}
+mean(total_steps_day$total_per_day) - mean(total_steps_day_adj$total_per_day)
+median(total_steps_day$total_per_day)  - median(total_steps_day_adj$total_per_day) 
+```
+
+
+##Are there differences in activity patterns between weekdays and weekends?
+
+```{r}
+activity_day <- mutate(activity_estimated_nas, day_type=ifelse (weekdays(activity_estimated_nas$date) == "Saturday" | weekdays(activity_estimated_nas$date) == "Sunday", "weekend", "weekday")) 
+
+interval_grouped <- group_by(activity_day, interval, day_type)
+avg_steps_day <- summarise(interval_grouped, avg_day = sum(steps)/n())
+xyplot(avg_day ~ interval | day_type, data=avg_steps_day, type="l", xlab="Time interval", ylab="Average Steps", layout= c(1,2))
+
+```
